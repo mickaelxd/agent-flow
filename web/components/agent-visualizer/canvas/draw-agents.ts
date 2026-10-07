@@ -306,12 +306,13 @@ function drawWaitingRipples(ctx: CanvasRenderingContext2D, agent: Agent, r: numb
   }
 }
 
-function drawAgentLabel(ctx: CanvasRenderingContext2D, agent: Agent, r: number, isHovered: boolean) {
-  ctx.fillStyle = isHovered ? COLORS.textPrimary : COLORS.textDim
-  ctx.font = '10px monospace'
+function drawAgentLabel(ctx: CanvasRenderingContext2D, agent: Agent, r: number, isHovered: boolean, zoom: number) {
+  ctx.fillStyle = isHovered || agent.state !== 'complete' ? COLORS.textPrimary : COLORS.textMuted
+  // Keep names readable when fitting many independent sessions on the canvas.
+  ctx.font = `${Math.max(10, 9 / zoom)}px monospace`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
-  const maxLabelW = r * AGENT_DRAW.labelWidthMultiplier
+  const maxLabelW = Math.max(r * AGENT_DRAW.labelWidthMultiplier, 110 / zoom)
   const agentLabel = truncateText(ctx, agent.name, maxLabelW)
   ctx.fillText(agentLabel, agent.x, agent.y + r + AGENT_DRAW.labelYOffset)
 }
@@ -339,6 +340,7 @@ export function drawAgents(
   hoveredAgentId: string | null,
   showStats: boolean,
   time: number,
+  zoom = 1,
 ) {
   for (const [id, agent] of agents) {
     const radius = agent.isMain ? NODE.radiusMain : NODE.radiusSub
@@ -373,7 +375,7 @@ export function drawAgents(
       drawWaitingRipples(ctx, agent, r, color, time)
     }
 
-    drawAgentLabel(ctx, agent, r, isHovered)
+    drawAgentLabel(ctx, agent, r, isHovered, zoom)
 
     // Context composition — ring for main agent, bar for sub-agents
     if (agent.state !== 'complete' || agent.opacity > 0.5) {

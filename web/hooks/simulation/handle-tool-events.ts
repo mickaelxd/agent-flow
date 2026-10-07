@@ -17,16 +17,19 @@ export function handleToolCallStart(
   const agentName = asString(payload.agent)
   const toolName = asString(payload.tool)
   const args = asString(payload.args)
+  const callId = typeof payload.callId === 'string' ? payload.callId : undefined
   const inputData = (payload.inputData && typeof payload.inputData === 'object' && !Array.isArray(payload.inputData))
     ? payload.inputData as Record<string, unknown> : undefined
   const agent = state.agents.get(agentName)
 
   if (agent) {
+    const toolId = `tool-${agentName}-${callId ?? `${toolName}-${currentTime}`}`
+    if (callId && state.toolCalls.has(toolId)) return
     // Dedup: skip if there's already a running tool call for the same agent+tool
     // created within the last 3 seconds (race between Hook Server and Session Watcher)
     let isDuplicate = false
     for (const tc of state.toolCalls.values()) {
-      if (tc.agentId === agentName && tc.toolName === toolName && tc.state === 'running' && (currentTime - tc.startTime) < TOOL_DEDUP_WINDOW_S) {
+      if (!callId && tc.agentId === agentName && tc.toolName === toolName && tc.state === 'running' && (currentTime - tc.startTime) < TOOL_DEDUP_WINDOW_S) {
         isDuplicate = true
         break
       }
@@ -39,8 +42,6 @@ export function handleToolCallStart(
       currentTool: toolName,
       toolCalls: agent.toolCalls + 1
     })
-
-    const toolId = `tool-${agentName}-${toolName}-${currentTime}`
 
     const pos = ctx.findToolSlot(agent, state.agents, state.toolCalls, currentTime)
 
@@ -103,6 +104,7 @@ export function handleToolCallEnd(
   const agentName = asString(payload.agent)
   const toolName = asString(payload.tool)
   const result = asString(payload.result, 'Done')
+  const callId = typeof payload.callId === 'string' ? payload.callId : undefined
   const tokenCost = typeof payload.tokenCost === 'number' ? payload.tokenCost : undefined
   const isError = asBoolean(payload.isError)
   const errorMessage = typeof payload.errorMessage === 'string' ? payload.errorMessage : undefined
@@ -118,7 +120,7 @@ export function handleToolCallEnd(
 
     const toolState: 'error' | 'complete' = isError ? 'error' : 'complete'
     for (const [id, tc] of state.toolCalls) {
-      if (tc.agentId === agentName && tc.toolName === toolName && tc.state === 'running') {
+      if (tc.agentId === agentName && tc.toolName === toolName && tc.state === 'running' && (!callId || id === `tool-${agentName}-${callId}`)) {
         state.toolCalls.set(id, { ...tc, state: toolState, completeTime: currentTime, result, tokenCost, errorMessage: isError ? (errorMessage || result) : undefined })
 
         const edgeId = `edge-${id}`

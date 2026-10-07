@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useRef, useMemo, useCallback } from 'react'
 import { Agent, Z, type AgentState } from '@/lib/agent-types'
 import { COLORS, ROLE_COLORS, getStateColor } from '@/lib/colors'
 import type { ConversationMessage } from '@/hooks/simulation/types'
@@ -19,7 +19,6 @@ const TEXT_TYPES = new Set(['assistant', 'user', 'thinking'])
 
 // Truncation limits for compact display
 const COLLAPSED_AGENT_NAME_MAX = 12
-const TAB_AGENT_NAME_MAX = 14
 const PREVIEW_MAX = 50
 const MESSAGE_TRUNCATE_MAX = 120
 
@@ -34,10 +33,8 @@ export function MessageFeedPanel({
   selectedAgentId,
 }: MessageFeedPanelProps) {
   const [expanded, setExpanded] = useState(false)
-  const [activeTab, setActiveTab] = useState<string>('all')
-  const [unread, setUnread] = useState<Set<string>>(new Set())
+  const activeTab: string = 'all'
   const logRef = useRef<HTMLDivElement>(null)
-  const prevCountRef = useRef(0)
   const agentsRef = useRef(agents)
   agentsRef.current = agents
 
@@ -140,41 +137,6 @@ export function MessageFeedPanel({
     handleScroll, measureRef,
   } = useVirtualList(messages, logRef, { gap: MESSAGE_GAP, autoScroll: true })
 
-  // Track unread messages per agent tab
-  useEffect(() => {
-    const totalCount = Array.from(conversations.values()).reduce((n, msgs) => n + msgs.length, 0)
-    if (totalCount > prevCountRef.current && expanded) {
-      for (const [agentId, msgs] of conversations) {
-        if (agentId !== activeTab && activeTab !== 'all' && msgs.length > 0) {
-          setUnread(prev => new Set(prev).add(agentId))
-        }
-      }
-    }
-    prevCountRef.current = totalCount
-  }, [conversations, expanded, activeTab])
-
-  useEffect(() => {
-    if (activeTab !== 'all') {
-      setUnread(prev => { const next = new Set(prev); next.delete(activeTab); return next })
-    } else {
-      setUnread(new Set())
-    }
-  }, [activeTab])
-
-  useEffect(() => {
-    if (activeTab !== 'all' && !conversations.has(activeTab)) setActiveTab('all')
-  }, [conversations, activeTab])
-
-  useEffect(() => {
-    if (selectedAgentId) {
-      const selected = agentsRef.current.get(selectedAgentId)
-      if (selected && !selected.isMain) setActiveTab(selectedAgentId)
-      else setActiveTab('all')
-    } else {
-      setActiveTab('all')
-    }
-  }, [selectedAgentId])
-
   const panelRef = useRef<HTMLDivElement>(null)
   const collapsePanel = useCallback(() => setExpanded(false), [])
   useClickOutside(panelRef, collapsePanel)
@@ -232,33 +194,6 @@ export function MessageFeedPanel({
           </button>
         </div>
 
-        {/* Agent Tabs (hidden when only 1 agent) */}
-        {agentsWithMessages.length > 1 && (
-        <div className="flex gap-0.5 px-2 pb-1.5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-          <TabButton
-            label="All"
-            active={activeTab === 'all'}
-            onClick={() => setActiveTab('all')}
-            color={COLORS.holoBase}
-          />
-          {agentsWithMessages.map(agentId => {
-            const agent = agents.get(agentId)
-            const name = agent?.name ?? agentId
-            const color = agent ? getStateColor(agent.state) : COLORS.idle
-            return (
-              <TabButton
-                key={agentId}
-                label={name.length > TAB_AGENT_NAME_MAX ? name.slice(0, TAB_AGENT_NAME_MAX) + '..' : name}
-                active={activeTab === agentId}
-                onClick={() => setActiveTab(agentId)}
-                color={color}
-                hasUnread={unread.has(agentId)}
-              />
-            )
-          })}
-        </div>
-        )}
-
         {/* Message List (virtualized) */}
         <div
           ref={logRef}
@@ -298,36 +233,6 @@ export function MessageFeedPanel({
         </div>
       </div>
     </div>
-  )
-}
-
-// ── Tab Button ──
-
-function TabButton({ label, active, onClick, color, hasUnread }: {
-  label: string
-  active: boolean
-  onClick: () => void
-  color: string
-  hasUnread?: boolean
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="px-2 py-0.5 rounded text-[9px] font-mono transition-all shrink-0 relative"
-      style={{
-        background: active ? color + '20' : 'transparent',
-        color: active ? color : COLORS.textMuted,
-        border: active ? `1px solid ${color}30` : '1px solid transparent',
-      }}
-    >
-      {label}
-      {hasUnread && (
-        <span
-          className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full"
-          style={{ background: COLORS.unreadDot }}
-        />
-      )}
-    </button>
   )
 }
 

@@ -1,6 +1,7 @@
 {
   "private": true,
   "scripts": {
+    "start:local": "node scripts/start-local.js",
     "setup": "node scripts/setup.js",
     "dev": "NEXT_PUBLIC_DEMO=0 NEXT_PUBLIC_RELAY_PORT=3001 concurrently -n relay,web -c blue,green \"pnpm run dev:relay\" \"pnpm run dev:web\"",
     "dev:relay": "node scripts/build-relay.js && node scripts/.dev-relay.js",
@@ -18,5 +19,6 @@
     "concurrently": "^9.2.1",
     "esbuild": "^0.20.2",
     "tsx": "^4.21.0"
-  }
+  },
+  "packageManager": "pnpm@10.30.3"
 }

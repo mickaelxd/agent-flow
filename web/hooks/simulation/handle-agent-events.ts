@@ -5,6 +5,7 @@ import {
 } from '@/lib/agent-types'
 import { COLORS } from '@/lib/colors'
 import { AGENT_SPAWN_DISTANCE } from '@/lib/canvas-constants'
+import { initialRootPosition } from '@/lib/unified-layout'
 import { pushTimelineBlock, type ProcessEventContext, type MutableEventState } from './process-event'
 import { edgeId, asString, asBoolean } from './types'
 
@@ -15,6 +16,7 @@ export function handleAgentSpawn(
   ctx: ProcessEventContext,
 ): void {
   const name = asString(payload.name)
+  const displayName = typeof payload.displayName === 'string' ? payload.displayName : name
   const parentId = typeof payload.parent === 'string' ? payload.parent : undefined
   const isMain = asBoolean(payload.isMain)
   const task = typeof payload.task === 'string' ? payload.task : undefined
@@ -27,6 +29,8 @@ export function handleAgentSpawn(
   if (existing) {
     state.agents.set(name, {
       ...existing,
+      name: displayName,
+      ...(parentId ? { parentId } : {}),
       state: 'idle',
       ...(task ? { task } : {}),
       ...(model ? { model, tokensMax: ctx.getContextWindowSize(model) } : {}),
@@ -36,6 +40,11 @@ export function handleAgentSpawn(
   }
 
   let x = 0, y = 0
+  if (!parentId) {
+    const roots = Array.from(state.agents.values()).filter(a => !a.parentId).length
+    const position = initialRootPosition(roots)
+    x = position.x; y = position.y
+  }
   if (parentId) {
     const parent = state.agents.get(parentId)
     if (parent) {
@@ -74,7 +83,7 @@ export function handleAgentSpawn(
   }
 
   const agent: Agent = {
-    id: name, name, state: 'idle',
+    id: name, name: displayName, state: 'idle',
     parentId: parentId || null,
     tokensUsed: 0, tokensMax: ctx.getContextWindowSize(model),
     contextBreakdown: emptyContextBreakdown(),
@@ -97,7 +106,7 @@ export function handleAgentSpawn(
   const timelineEntry: TimelineEntry = {
     id: `timeline-${name}`,
     agentId: name,
-    agentName: name,
+    agentName: displayName,
     startTime: currentTime,
     blocks: [],
   }

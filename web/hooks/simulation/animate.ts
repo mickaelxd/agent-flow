@@ -23,9 +23,10 @@ function animateAgents(agents: SimulationState['agents'], deltaTime: number, cur
 
     if (agent.state !== 'complete' && opacity < 1) { opacity = Math.min(1, opacity + deltaTime * ANIM_SPEED.agentFadeIn); updated = true }
     if (agent.state !== 'complete' && scale < 1) { scale = Math.min(1, scale + deltaTime * ANIM_SPEED.agentScaleIn); updated = true }
-    if (agent.state === 'complete' && !agent.isMain) {
-      if (opacity > 0) { opacity = Math.max(0, opacity - deltaTime * ANIM_SPEED.agentFadeOut); updated = true }
-      if (scale > 0.8) { scale = Math.max(0.8, scale - deltaTime * ANIM_SPEED.agentScaleOut); updated = true }
+    if (agent.state === 'complete') {
+      // Keep completed agents visible in the shared canvas and review history.
+      if (opacity !== 0.5) { opacity = 0.5; updated = true }
+      if (scale !== 1) { scale = 1; updated = true }
     }
     if (agent.state !== 'complete') { timeAlive += deltaTime; updated = true }
     // Prune expired message bubbles
