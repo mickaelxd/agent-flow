@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useMemo, useEffect, useLayoutEffect, useRef } from "react"
+import { useState, useCallback, useMemo, useEffect, useRef } from "react"
 import { useAgentSimulation } from "@/hooks/use-agent-simulation"
 import { useVSCodeBridge } from "@/hooks/use-vscode-bridge"
 import { useSelectionState } from "@/hooks/use-selection-state"
@@ -17,7 +17,7 @@ import { AgentChatPanel } from "./chat-panel"
 import { SessionTranscriptPanel } from "./session-transcript-panel"
 import { OpenFileProvider } from "./tool-content-renderer"
 import { stopPropagationHandlers } from "./shared-ui"
-import { TimelineEvent, TIMING } from "@/lib/agent-types"
+import { TimelineEvent, TIMING, Z } from "@/lib/agent-types"
 import { COLORS } from "@/lib/colors"
 
 import { MOCK_DURATION } from "@/lib/mock-scenario"
@@ -48,8 +48,6 @@ export function AgentVisualizer() {
     setSpeed,
     seekToTime,
     updateAgentPosition,
-    saveSnapshot,
-    restoreSnapshot,
   } = useAgentSimulation({
     useMockData: bridge.useMockData,
     externalEvents: bridge.pendingEvents,
@@ -86,38 +84,6 @@ export function AgentVisualizer() {
     const timer = setTimeout(() => play(), TIMING.autoPlayDelayMs)
     return () => clearTimeout(timer)
   }, [play])
-
-  // Per-session state cache: save/restore simulation state on tab switch
-  // so sessions stay up to date and switching is instant.
-  // useLayoutEffect ensures restart happens synchronously before any animation
-  // frame can consume and discard events from pendingEventsRef.
-  const sessionCacheRef = useRef<Map<string, { snapshot: ReturnType<typeof saveSnapshot>; eventCount: number }>>(new Map())
-  const prevSelectedRef = useRef<string | null>(null)
-  useLayoutEffect(() => {
-    if (bridge.selectedSessionId && bridge.selectedSessionId !== prevSelectedRef.current) {
-      // Save outgoing session state (if any)
-      if (prevSelectedRef.current !== null) {
-        sessionCacheRef.current.set(prevSelectedRef.current, {
-          snapshot: saveSnapshot(),
-          eventCount: bridge.getSessionEventCount(prevSelectedRef.current),
-        })
-      }
-
-      // Restore or cold-start the incoming session, then flush events.
-      // Flushing happens HERE (after state swap) to prevent the animation
-      // frame from processing events in the wrong simulation context.
-      const cached = sessionCacheRef.current.get(bridge.selectedSessionId)
-      if (cached) {
-        restoreSnapshot(cached.snapshot)
-        bridge.flushSessionEvents(bridge.selectedSessionId, cached.eventCount)
-      } else {
-        restart()
-        bridge.flushSessionEvents(bridge.selectedSessionId)
-      }
-
-      prevSelectedRef.current = bridge.selectedSessionId
-    }
-  }, [bridge.selectedSessionId, restart, bridge.flushSessionEvents, saveSnapshot, restoreSnapshot, bridge.getSessionEventCount])
 
   // Timeline events — incremental: only processes new conversation messages
   const timelineCacheRef = useRef<{
@@ -239,16 +205,7 @@ export function AgentVisualizer() {
     ]
   ) : []
 
-  const handleCloseSession = useCallback((id: string) => {
-    bridge.removeSession(id)
-    sessionCacheRef.current.delete(id)
-    if (bridge.selectedSessionId === id) {
-      const remaining = bridge.sessions.filter(s => s.id !== id)
-      if (remaining.length > 0) {
-        bridge.selectSession(remaining[remaining.length - 1].id)
-      }
-    }
-  }, [bridge])
+  const handleCloseSession = useCallback(() => {}, [])
 
   const openFile = useCallback((filePath: string, line?: number) => {
     bridge.bridgeOpenFile(filePath, line)
@@ -264,7 +221,7 @@ export function AgentVisualizer() {
         <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
           <div className="text-center" style={{ fontFamily: "'SF Mono', 'Fira Code', monospace" }}>
             <div className="text-sm" style={{ color: '#66ccff80' }}>WAITING FOR AGENT SESSION</div>
-            <div className="mt-2 text-xs" style={{ color: '#66ccff40' }}>Start a Claude Code session to see activity</div>
+            <div className="mt-2 text-xs" style={{ color: '#66ccff40' }}>Start a Codex or Claude Code session to see activity</div>
           </div>
         </div>
       )}
@@ -288,6 +245,17 @@ export function AgentVisualizer() {
         selectedDiscoveryId={selection.selectedDiscoveryId}
         showCostOverlay={showCostOverlay}
       />
+
+      {/* Accessible inventory; all sessions and children remain on the same canvas. */}
+      <div className="absolute right-3 top-12 glass-card p-3 font-mono text-[10px] max-h-[35vh] overflow-y-auto" style={{ zIndex: Z.info, width: 250 }} aria-label="Agentes no mesmo canvas">
+        <div style={{ color: COLORS.holoBright, marginBottom: 8 }}>TODOS OS AGENTES · {agents.size}</div>
+        {Array.from(agents.values()).sort((a, b) => Number(a.state === 'complete') - Number(b.state === 'complete') || Number(!!a.parentId) - Number(!!b.parentId) || a.name.localeCompare(b.name)).map(agent => (
+          <button key={agent.id} onClick={() => selection.handleAgentClick(agent.id)} className="block text-left w-full py-1" style={{ color: COLORS.textPrimary }}>
+            <span style={{ color: agent.state === 'complete' ? COLORS.textMuted : COLORS.complete }}>{agent.state === 'complete' ? '○' : '●'}</span>{' '}
+            {agent.name} <span style={{ color: COLORS.textMuted }}>{agent.state === 'complete' ? 'concluído' : agent.state === 'tool_calling' ? 'ferramenta' : 'em execução'}</span>
+          </button>
+        ))}
+      </div>
 
       {/* Message feed panel (top-left) */}
       <MessageFeedPanel

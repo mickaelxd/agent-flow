@@ -6,11 +6,6 @@ export function snapVisualState(state: SimulationState, targetTime: number): Sim
 
   const newAgents = new Map(state.agents)
   for (const [id, agent] of newAgents) {
-    if (agent.state === 'complete' && !agent.isMain) {
-      // Remove completed sub-agents entirely during seek
-      newAgents.delete(id)
-      continue
-    }
     const snapped = { ...agent }
     if (agent.state !== 'complete') {
       snapped.opacity = 1

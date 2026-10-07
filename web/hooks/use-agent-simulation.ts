@@ -267,7 +267,20 @@ export function useAgentSimulation(options: UseAgentSimulationOptions = {}) {
     frameRef.current = result
 
     // Force tick — updates agent positions in frameRef
-    if (forceSimRef.current) forceSimRef.current.tick()
+    if (forceSimRef.current) {
+      const sim = forceSimRef.current
+      sim.tick()
+      // d3's manual tick does not dispatch its tick event. Copy positions here
+      // so independent main agents do not remain stacked at (0, 0).
+      const positioned = new Map(frameRef.current.agents)
+      for (const node of sim.nodes()) {
+        const agent = positioned.get(node.id)
+        if (agent && !agent.pinned && node.x !== undefined && node.y !== undefined) {
+          positioned.set(node.id, { ...agent, x: node.x, y: node.y })
+        }
+      }
+      frameRef.current = { ...frameRef.current, agents: positioned }
+    }
 
     // Throttle React re-renders — UI updates at ~4/sec, canvas stays smooth via frameRef
     if (newEvents.length > 0) {

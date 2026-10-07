@@ -15,6 +15,7 @@ import { readNewFileLines, foldPathCase } from '../extension/src/fs-utils'
 import { scanSubagentsDir, readSubagentNewLines } from '../extension/src/subagent-watcher'
 import { handlePermissionDetection } from '../extension/src/permission-detection'
 import { CodexSessionWatcher } from '../extension/src/codex-session-watcher'
+import { CodexDesktopWatcher } from './codex-desktop-watcher'
 import {
   INACTIVITY_TIMEOUT_MS, SCAN_INTERVAL_MS, ACTIVE_SESSION_AGE_S, POLL_FALLBACK_MS,
   SESSION_ID_DISPLAY, SYSTEM_PROMPT_BASE_TOKENS, ORCHESTRATOR_NAME,
@@ -78,8 +79,14 @@ function broadcast(data: string) {
 // ─── Event buffering ────────────────────────────────────────────────────────
 
 const eventBuffer = new Map<string, AgentEvent[]>()
+const monitorStart = Date.now()
+let eventTime = 0
 
 function broadcastEvent(event: AgentEvent) {
+  // A single monotonic clock for every source; session-relative clocks cannot
+  // be combined into one timeline, and equal times collide in tool node IDs.
+  eventTime = Math.max((Date.now() - monitorStart) / 1000, eventTime + 0.001)
+  event = { ...event, time: eventTime }
   sessionEventCount++
   if (event.type === 'model_detected') {
     const m = (event.payload as { model?: unknown } | undefined)?.model
@@ -430,13 +437,29 @@ export async function createRelay(options: RelayOptions): Promise<Relay> {
   // lifecycle 'started' event in CodexSessionWatcher.attachSession, so
   // wiring both would double-broadcast session-started to SSE clients.
   let codexWatcher: CodexSessionWatcher | null = null
+  let desktopWatcher: CodexDesktopWatcher | null = null
+  let desktopConnected = false
+  let localStartTimer: NodeJS.Timeout | null = null
   if (wantCodex) {
-    codexWatcher = new CodexSessionWatcher(workspace)
-    codexWatcher.onEvent((event) => broadcastEvent(event))
-    codexWatcher.onSessionLifecycle((lifecycle) => {
-      broadcastSessionLifecycle(lifecycle.type, lifecycle.sessionId, lifecycle.label)
+    desktopWatcher = new CodexDesktopWatcher({
+      emit: broadcastEvent,
+      lifecycle: broadcastSessionLifecycle,
+      status: connected => {
+        desktopConnected = connected
+        broadcast(JSON.stringify({ type: 'connection-status', status: connected ? 'watching' : 'disconnected', source: 'codex-desktop' }))
+      },
     })
-    codexWatcher.start()
+    desktopWatcher.start()
+    // Discover CLI sessions throughout CODEX_HOME, regardless of the launch cwd.
+    // Desktop snapshots are authoritative when both sources see the same ID.
+    codexWatcher = new CodexSessionWatcher(undefined)
+    codexWatcher.onEvent((event) => {
+      if (!event.sessionId || !desktopWatcher?.hasSession(event.sessionId)) broadcastEvent(event)
+    })
+    codexWatcher.onSessionLifecycle((lifecycle) => {
+      if (!desktopWatcher?.hasSession(lifecycle.sessionId)) broadcastSessionLifecycle(lifecycle.type, lifecycle.sessionId, lifecycle.label)
+    })
+    localStartTimer = setTimeout(() => codexWatcher?.start(), 3000)
   }
 
   const telemetry = options.telemetry
@@ -496,6 +519,10 @@ export async function createRelay(options: RelayOptions): Promise<Relay> {
         })
       }
       if (codexWatcher) sessionList.push(...codexWatcher.getActiveSessions())
+      const mergedSessions = new Map(sessionList.map(s => [s.id, s]))
+      for (const session of desktopWatcher?.getSessions() ?? []) mergedSessions.set(session.id, session)
+      sessionList.splice(0, sessionList.length, ...mergedSessions.values())
+      if (desktopWatcher) sendSSE(res, { type: 'connection-status', status: desktopConnected ? 'watching' : 'disconnected', source: 'codex-desktop' })
       if (sessionList.length > 0) {
         sendSSE(res, { type: 'session-list', sessions: sessionList })
       }
@@ -507,12 +534,9 @@ export async function createRelay(options: RelayOptions): Promise<Relay> {
         if (aActive !== bActive) return bActive - aActive
         return b.lastActivityTime - a.lastActivityTime
       })
-      if (sorted.length > 0) {
-        const buffered = eventBuffer.get(sorted[0].id)
-        if (buffered) {
-          sendSSE(res, { type: 'agent-event-batch', events: buffered })
-        }
-      }
+      const allEvents = sorted.flatMap(session => eventBuffer.get(session.id) ?? []).sort((a, b) => a.time - b.time)
+      // Bound each SSE message while replaying every session, not only the latest.
+      for (let i = 0; i < allEvents.length; i += 200) sendSSE(res, { type: 'agent-event-batch', events: allEvents.slice(i, i + 200) })
     },
 
     dispose() {
@@ -542,6 +566,8 @@ export async function createRelay(options: RelayOptions): Promise<Relay> {
         }
       }
       codexWatcher?.dispose()
+      desktopWatcher?.dispose()
+      if (localStartTimer) clearTimeout(localStartTimer)
     },
   }
 }

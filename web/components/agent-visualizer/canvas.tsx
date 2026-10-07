@@ -269,7 +269,7 @@ export function AgentCanvas({
       drawEdges(ctx, edges, agents, toolCalls, activeEdgeIds, timeRef.current)
       drawToolCalls(ctx, toolCalls, timeRef.current, selectedToolCallId)
       drawDiscoveries(ctx, discoveries, agents, selectedDiscoveryId)
-      drawAgents(ctx, agents, selectedAgentId, hoveredAgentId, showStats, timeRef.current)
+      drawAgents(ctx, agents, selectedAgentId, hoveredAgentId, showStats, timeRef.current, transform.scale)
       drawMessageBubblesWorld(ctx, agents, simTimeRef.current)
       if (showCostOverlay) drawCostLabels(ctx, agents, toolCalls)
       drawParticles(ctx, particles, edgeMap, agents, toolCalls, timeRef.current)

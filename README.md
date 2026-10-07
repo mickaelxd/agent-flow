@@ -1,3 +1,39 @@
+# Agent Flow — unified Codex desktop fork
+
+This fork connects to the running Codex desktop application's private local IPC socket. Local and durable sessions, including their child agents, share one canvas and timeline. Completed agents remain visible, and messages identify the Codex runtime.
+
+## Run locally
+
+Use Node 22.12+ and pnpm 10. The server binds only to 127.0.0.1.
+
+```sh
+pnpm install --frozen-lockfile
+pnpm build:app
+pnpm start:local
+```
+
+The launcher keeps the monitor running after the terminal closes, uses a private `.local/desktop-sessions.json` inventory when present, and saves its PID/log in `.local/`. The Codex desktop app must remain open. The monitor only sends initialization and read-only following broadcasts: it never starts, resumes, interrupts, edits or approves a task, and does not change any model or harness setting.
+
+For existing durable chats, provide a private inventory containing thread IDs and host IDs exported from the app's `list_threads` tool. New streams announced by the app and child agents found in snapshots are followed automatically. Local CLI rollouts are also discovered across CODEX_HOME. Archived or unloaded chats with no desktop stream are not made active by the monitor.
+
+```json
+[{"id":"<thread UUID>","hostId":"durable"}]
+```
+
+```sh
+AGENT_FLOW_RUNTIME=codex DO_NOT_TRACK=1 AGENT_FLOW_DESKTOP_SESSIONS=/absolute/path/to/inventory.json node app/dist/app.js --no-open
+```
+
+Keep inventories and runtime data in `.local/` (ignored by Git). `AGENT_FLOW_DESKTOP_SOCKET` can override the existing desktop socket location. The adapter supports desktop stream protocol version 11; an incompatible version or disconnected desktop is shown as OFFLINE. It reconnects automatically and requests a fresh snapshot after a missing patch revision. Catch-up is bounded to 800 recent items per session. The desktop IPC is an internal interface and may require updates when the app changes.
+
+## Validation
+
+Run the root tests, extension tests, and `pnpm --dir web exec tsc --noEmit`. Tests cover cross-session identity, canonical history, patch application, child discovery, duplicate snapshots and completion.
+
+Upstream: https://github.com/patoles/agent-flow · Apache-2.0. The original project documentation follows.
+
+---
+
 # Agent Flow
 
 Real-time visualization of Claude Code and Codex agent orchestration. Watch your agents think, branch, and coordinate as they work. [Demo video here](https://www.youtube.com/watch?v=Ud6eDrFN-TA). 

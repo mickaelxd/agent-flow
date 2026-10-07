@@ -27,3 +27,5 @@ extension/.vscode/
 extension/package-lock.json
 
 .DS_Store
+# Private desktop thread inventory and monitor logs.
+.local/

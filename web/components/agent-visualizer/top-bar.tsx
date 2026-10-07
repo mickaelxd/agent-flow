@@ -5,7 +5,6 @@ import { Z } from "@/lib/agent-types"
 import { COLORS } from "@/lib/colors"
 import { formatTokens } from "@/lib/utils"
 import { agentCost } from "./canvas/draw-cost"
-import { SessionTabs } from "./session-tabs"
 import type { SessionInfo, ConnectionStatus } from "@/lib/bridge-types"
 
 // ─── Mute/Unmute SVG Icons ───────────────────────────────────────────────────
@@ -110,25 +109,14 @@ export const TopBar = memo(function TopBar({
 }: TopBarProps) {
   return (
     <div className="absolute top-3 left-3 right-3 flex items-center gap-4 font-mono text-[10px]" style={{ zIndex: Z.info }}>
-      {/* Session tabs — scrollable, takes available space */}
-      {sessions.length > 1 && (
-        <div className="min-w-0 flex-shrink overflow-x-auto scrollbar-hide">
-          <SessionTabs
-            sessions={sessions}
-            selectedSessionId={selectedSessionId}
-            sessionsWithActivity={sessionsWithActivity}
-            onSelectSession={onSelectSession}
-            onCloseSession={onCloseSession}
-          />
-        </div>
-      )}
+      <span style={{ color: COLORS.holoBright, whiteSpace: 'nowrap' }}>Todos juntos · {sessions.length} sessões</span>
 
       {/* Spacer pushes info to the right */}
       <div className="flex-1" />
 
       {/* Right-side info/controls */}
       <div className="flex items-center gap-4 flex-shrink-0" style={{ color: COLORS.textMuted }}>
-        {isVSCode && <ConnectionIndicator status={connectionStatus} />}
+        <ConnectionIndicator status={connectionStatus} />
         <span>{agentCount} agents</span>
         <span>
           {formatTokens(totalTokens)} tokens
